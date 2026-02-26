@@ -1,0 +1,22 @@
+Inhalt:
+```
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Persönliche Dokumente
+docs/
+
+# Generierte Outputs
+outputs/
+
+# API Keys
+.env
+*.env
+
+# Chainlit
+.chainlit/
+
+# Mac
+.DS_Store
