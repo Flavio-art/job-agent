@@ -12,30 +12,20 @@ import requests
 from bs4 import BeautifulSoup
 from langchain_community.document_loaders import PyPDFLoader
 
+from personal_config import (
+    SYSTEM_PROMPT,
+    CV_GENERATION_PROMPT,
+    COVER_LETTER_PROMPT,
+    MATCHING_PROMPT
+)
+
 # ─── Config ───────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 DOCS_DIR = "docs"
 OUTPUTS_DIR = "outputs"
 
-MODEL_SMART = "claude-opus-4-6"          # Für CV & Motivationsschreiben
-MODEL_FAST = "claude-haiku-4-5-20251001"  # Für Analyse & einfache Tasks
-
-SYSTEM_PROMPT = """Du bist ein Experten-Coach für Karriereberatung, spezialisiert auf Senior-Rollen
-im Bereich Data Science, Analytics und Marketing-Strategie.
-
-Deine Aufgabe ist es, Flavio Caderas dabei zu unterstützen, herausragende Bewerbungsunterlagen zu erstellen.
-
-PROFIL FLAVIO CADERAS:
-Letzte Position: Data Science Analytics Manager (Customer Marketing Analytics) bei eBay Marketplaces GmbH (2019–2025)
-USP: Komplexe Datenanalysen durch klare Kommunikation verständlich machen, um fundierte Entscheidungen zu ermöglichen.
-
-SCHREIBSTIL-RICHTLINIEN:
-- Kein Füllmaterial, keine Phrasen wie "motivierter Teamplayer"
-- Konkrete Resultate mit Begriffen wie "Business Impact", "Conversion-Optimierung", "Marketingeffizienz"
-- Tonfall: Professionell, selbstbewusst, direkt
-- Moderne Tech-Unternehmenssprache
-- Prägnante Bullet Points statt langer Fliesstext
-- Keine Zitate, keine Bindestriche im Fliesstext"""
+MODEL_SMART = "claude-opus-4-6"           # Für CV & Motivationsschreiben
+MODEL_FAST  = "claude-haiku-4-5-20251001" # Für Analyse & einfache Tasks
 
 
 # ─── Helper Functions ─────────────────────────────────────────────────────────
@@ -88,6 +78,14 @@ def scrape_job_description(url):
         return f"Fehler beim Laden der URL: {e}"
 
 
+def clean_latex(latex_code):
+    """Bereinigt LaTeX Code von Markdown-Artefakten."""
+    latex_code = latex_code.replace('```latex', '').replace('```', '').strip()
+    if '\\documentclass' in latex_code:
+        latex_code = latex_code[latex_code.index('\\documentclass'):]
+    return latex_code
+
+
 def extract_company_name(client, job_description):
     """Extrahiert den Firmennamen aus der Stellenbeschreibung."""
     response = client.messages.create(
@@ -99,7 +97,6 @@ def extract_company_name(client, job_description):
         }]
     )
     name = response.content[0].text.strip()
-    # Sonderzeichen entfernen für Dateinamen
     name = re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_')
     return name if name else "Unbekannt"
 
@@ -112,34 +109,15 @@ def analyze_matching(client, profile_data, job_description):
         system=SYSTEM_PROMPT,
         messages=[{
             "role": "user",
-            "content": f"""Analysiere den Match zwischen Flavios Profil und dieser Stelle.
-
-STELLENBESCHREIBUNG:
-{job_description}
-
-FLAVIOS PROFIL:
-{profile_data[:3000]}
-
-Antworte NUR mit einem JSON Objekt in diesem Format:
-{{
-  "gesamt_score": 85,
-  "staerken": [
-    {{"skill": "Data Science", "score": 95}},
-    {{"skill": "A/B Testing", "score": 90}},
-    {{"skill": "Stakeholder Management", "score": 85}}
-  ],
-  "gaps": [
-    {{"skill": "Scala", "score": 0}},
-    {{"skill": "AWS", "score": 20}}
-  ],
-  "empfehlung": "Kurze Empfehlung ob Flavio sich bewerben soll"
-}}"""
+            "content": MATCHING_PROMPT.format(
+                job_description=job_description,
+                profile_data=profile_data[:3000]
+            )
         }]
     )
 
     try:
         text = response.content[0].text.strip()
-        # JSON aus Response extrahieren
         json_match = re.search(r'\{.*\}', text, re.DOTALL)
         if json_match:
             return json.loads(json_match.group())
@@ -168,7 +146,7 @@ def format_matching_message(matching):
         emoji = "🔴"
         bewertung = "Schwacher Match"
 
-    msg = f"## 📊 Matching Analyse\n\n"
+    msg  = f"## 📊 Matching Analyse\n\n"
     msg += f"### {emoji} Gesamt-Match: **{score}%** – {bewertung}\n\n"
 
     if matching.get("staerken"):
@@ -196,40 +174,14 @@ def generate_cv_latex(client, profile_data, job_description, cv_template):
         system=SYSTEM_PROMPT,
         messages=[{
             "role": "user",
-            "ccontent": f"""Passe den LaTeX CV Template für diese Stelle an.
-
-STELLENBESCHREIBUNG:
-{job_description}
-
-PROFIL & DOKUMENTE:
-{profile_data}
-
-LATEX CV TEMPLATE:
-{cv_template}
-
-STRIKTE REGELN – NIEMALS VERÄNDERN:
-1. Sektionsreihenfolge EXAKT beibehalten wie im Template
-2. Alle Daten/Jahreszahlen/Monate EXAKT wie im Template übernehmen
-3. "Sabbatical & Persönliche Projekte" IMMER beibehalten
-4. "Berufliche Neuorientierung" IMMER an gleicher Position
-5. Tabellenspaltenbreite p{{3.8cm}} NIEMALS ändern
-6. Dateinamen von Bildern EXAKT übernehmen (profile_photo.png)
-7. Struktur, Formatierung und LaTeX-Befehle NICHT verändern
-
-NUR ERLAUBT:
-- Profiltext (Zusammenfassung oben) anpassen
-- Bullet Points in Berufserfahrung anpassen
-- Titel/Untertitel falls direkt zur Stelle passend
-
-Erstelle einen angepassten LaTeX CV der:
-1. Die relevantesten Erfahrungen für diese Stelle hervorhebt
-2. Keywords aus der Stellenbeschreibung natürlich einbaut
-3. Messbare Erfolge und Business Impact betont
-
-Gib NUR den LaTeX Code zurück, ohne Erklärungen oder Markdown-Backticks."""
+            "content": CV_GENERATION_PROMPT.format(
+                job_description=job_description,
+                profile_data=profile_data,
+                cv_template=cv_template
+            )
         }]
     )
-    return response.content[0].text
+    return clean_latex(response.content[0].text)
 
 
 def generate_cover_letter_latex(client, profile_data, job_description, cl_template):
@@ -240,27 +192,14 @@ def generate_cover_letter_latex(client, profile_data, job_description, cl_templa
         system=SYSTEM_PROMPT,
         messages=[{
             "role": "user",
-            "content": f"""Erstelle ein überzeugendes Motivationsschreiben im LaTeX Format.
-
-STELLENBESCHREIBUNG:
-{job_description}
-
-PROFIL & DOKUMENTE:
-{profile_data}
-
-LATEX MOTIVATIONSSCHREIBEN TEMPLATE:
-{cl_template}
-
-Erstelle ein Motivationsschreiben das:
-1. Direkt auf die spezifischen Anforderungen der Stelle eingeht
-2. Flavios USP hervorhebt
-3. Konkrete Beispiele aus der eBay-Zeit nennt
-4. Professionell, selbstbewusst und direkt ist
-
-Gib NUR den LaTeX Code zurück, ohne Erklärungen oder Markdown-Backticks."""
+            "content": COVER_LETTER_PROMPT.format(
+                job_description=job_description,
+                profile_data=profile_data,
+                cl_template=cl_template
+            )
         }]
     )
-    return response.content[0].text
+    return clean_latex(response.content[0].text)
 
 
 def compile_latex_to_pdf(latex_code, output_filename):
@@ -271,7 +210,6 @@ def compile_latex_to_pdf(latex_code, output_filename):
     with tempfile.TemporaryDirectory() as tmpdir:
         tex_file = Path(tmpdir) / "document.tex"
 
-        # Profilbild kopieren
         photo_path = Path(DOCS_DIR) / "profile_photo.png"
         if photo_path.exists():
             shutil.copy(photo_path, Path(tmpdir) / "profile_photo.png")
@@ -288,7 +226,7 @@ def compile_latex_to_pdf(latex_code, output_filename):
             )
 
         pdf_source = Path(tmpdir) / "document.pdf"
-        pdf_dest = output_dir / output_filename
+        pdf_dest   = output_dir / output_filename
 
         if pdf_source.exists():
             shutil.copy(pdf_source, pdf_dest)
@@ -338,7 +276,6 @@ async def on_message(message: cl.Message):
         await cl.Message(content="⚠️ API Key fehlt!").send()
         return
 
-    # URL extrahieren
     url_pattern = r'https?://[^\s]+'
     urls = re.findall(url_pattern, message.content)
 
@@ -361,7 +298,6 @@ async def on_message(message: cl.Message):
     if extra_comments:
         job_description += f"\n\nZUSÄTZLICHE KOMMENTARE:\n{extra_comments}"
 
-    # Firmenname extrahieren
     company_name = extract_company_name(client, job_description)
 
     # ── Schritt 2: Matching Analyse ───────────────────────────────────────────
@@ -369,12 +305,10 @@ async def on_message(message: cl.Message):
     await msg.update()
 
     profile_data = load_documents()
-    cv_template = load_latex_template("cv_template.tex")
-    cl_template = load_latex_template("cover_letter_template.tex")
+    cv_template  = load_latex_template("cv_template.tex")
+    cl_template  = load_latex_template("cover_letter_template.tex")
 
     matching = analyze_matching(client, profile_data, job_description)
-
-    # Matching anzeigen
     await cl.Message(content=format_matching_message(matching)).send()
 
     # ── Schritt 3: Dokumente generieren ───────────────────────────────────────
@@ -398,7 +332,6 @@ async def on_message(message: cl.Message):
     cv_pdf = compile_latex_to_pdf(cv_latex, cv_filename)
     cl_pdf = compile_latex_to_pdf(cl_latex, cl_filename)
 
-    # LaTeX Code speichern
     Path(OUTPUTS_DIR).mkdir(exist_ok=True)
     with open(f"{OUTPUTS_DIR}/CV_{company_name}.tex", "w") as f:
         f.write(cv_latex)
@@ -406,12 +339,12 @@ async def on_message(message: cl.Message):
         f.write(cl_latex)
 
     # ── Abschluss-Nachricht ───────────────────────────────────────────────────
-    score = matching.get("gesamt_score", 0)
-    gaps = matching.get("gaps", [])
+    score    = matching.get("gesamt_score", 0)
+    gaps     = matching.get("gaps", [])
     gap_text = ""
     if gaps:
         gap_names = [g["skill"] for g in gaps]
-        gap_text = f"\n\n💡 **Tipp:** Erwähne in der Bewerbung wie du diese Skills aufbaust: {', '.join(gap_names)}"
+        gap_text  = f"\n\n💡 **Tipp:** Erwähne in der Bewerbung wie du diese Skills aufbaust: {', '.join(gap_names)}"
 
     abschluss = f"""## 🎉 Deine Bewerbung für **{company_name.replace('_', ' ')}** ist bereit!
 
@@ -425,7 +358,6 @@ Viel Erfolg bei deiner Bewerbung! 🍀"""
 
     await cl.Message(content=abschluss).send()
 
-    # PDFs als Download anbieten
     elements = []
     if cv_pdf and Path(cv_pdf).exists():
         elements.append(cl.File(name=cv_filename, path=cv_pdf, display="inline"))

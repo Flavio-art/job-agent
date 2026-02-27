@@ -19,4 +19,4 @@ outputs/
 .chainlit/
 
 # Mac
-.DS_Store
+.DS_Storepersonal_config.py
