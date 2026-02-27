@@ -54,6 +54,12 @@ Job URL (input)
  ├── Reference Letter (.pdf)
  └── Personal Notes (.txt)
       ↓
+ personal_config.py (private, not on GitHub)
+ ├── SYSTEM_PROMPT       → Career coaching persona
+ ├── CV_GENERATION_PROMPT → CV rules & guidelines
+ ├── COVER_LETTER_PROMPT  → Cover letter guidelines
+ └── MATCHING_PROMPT      → Match scoring logic
+      ↓
  Claude API
  ├── Haiku  →  Matching Score & Gap Analysis
  └── Opus   →  CV & Cover Letter Generation
@@ -72,7 +78,6 @@ Job URL (input)
 ### Prerequisites
 
 - Python 3.11
-- [Ollama](https://ollama.com) (optional, for local models)
 - [LaTeX / MacTeX](https://www.tug.org/mactex/) for PDF compilation
 - An [Anthropic API Key](https://console.anthropic.com)
 
@@ -101,14 +106,25 @@ eval "$(/usr/libexec/path_helper)"
 ### Set your API Key
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-your-key-here
-```
-
-To persist across terminal sessions:
-```bash
 echo 'export ANTHROPIC_API_KEY=sk-ant-your-key-here' >> ~/.zshrc
 source ~/.zshrc
 ```
+
+### Create your personal config
+
+Create a `personal_config.py` file in the project root (this file is private and not on GitHub):
+
+```python
+SYSTEM_PROMPT = """You are an expert career coach...
+[your personal coaching prompt here]
+"""
+
+CV_GENERATION_PROMPT = """..."""
+COVER_LETTER_PROMPT = """..."""
+MATCHING_PROMPT = """..."""
+```
+
+See `personal_config.example.py` for the full template.
 
 ### Add your documents
 
@@ -161,20 +177,31 @@ $5 in API credits ≈ 25 tailored applications.
 
 ```
 job-agent/
-├── app.py              ← Main Chainlit app & agent logic
-├── requirements.txt    ← Python dependencies
-├── .gitignore          ← Excludes docs/, outputs/, keys
-├── docs/               ← Your private documents (not on GitHub)
-└── outputs/            ← Generated PDFs (not on GitHub)
+├── app.py                    ← Main Chainlit app & agent logic
+├── personal_config.py        ← Your private prompts (NOT on GitHub)
+├── personal_config.example.py← Template to create your own config
+├── requirements.txt          ← Python dependencies
+├── .gitignore                ← Excludes docs/, outputs/, personal_config.py
+├── docs/                     ← Your private documents (not on GitHub)
+└── outputs/                  ← Generated PDFs (not on GitHub)
 ```
 
 ---
 
 ## 🔒 Privacy
 
-Your documents never leave your machine unless you choose to use the Anthropic API. The job description and your profile are sent to Claude for generation — no data is stored by this application.
+This project is designed with privacy in mind:
 
-To run fully locally, replace the Anthropic API calls with Ollama (e.g. `llama3.1:8b`) — quality will vary.
+```
+On GitHub:          NOT on GitHub:
+─────────────────   ──────────────────────
+app.py              personal_config.py  ← Your prompts & profile
+requirements.txt    docs/               ← Your CV templates & documents
+README.md           outputs/            ← Generated PDFs
+.gitignore          .env                ← API keys
+```
+
+Your documents and personal prompts never leave your machine unless sent to the Anthropic API for generation. No data is stored by this application.
 
 ---
 
@@ -193,7 +220,7 @@ To run fully locally, replace the Anthropic API calls with Ollama (e.g. `llama3.
 - [ ] Interview preparation questions
 - [ ] Auto-detect language from job posting
 - [ ] Draft application email
-- [ ] WhatsApp integration via OpenClaw
+- [ ] WhatsApp integration
 - [ ] Docker support
 
 ---
